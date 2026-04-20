@@ -44,8 +44,8 @@ services:
     image: ghcr.io/macsatcom/multimedia-explorer-docker:latest
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_OPENROUTER_API_KEY=sk-or-v1-...
+    env_file:
+      - .env
     restart: unless-stopped
 ```
 
