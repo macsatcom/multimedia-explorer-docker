@@ -1,19 +1,16 @@
-FROM oven/bun:1.2-alpine AS base
+FROM oven/bun:1.2-alpine
 RUN apk add --no-cache git
 
 WORKDIR /app
 
-# Clone the source
+# Clone source and install deps at image build time (no API key needed yet)
 RUN git clone https://github.com/OpenRouterTeam/multimedia-explorer.git .
-
-# Install dependencies
 RUN bun install --frozen-lockfile
-
-# Build
-RUN bun run build
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["bun", "run", "start"]
+# Next.js build runs at container startup so NEXT_PUBLIC_ env vars
+# from docker-compose / docker run are available during the build step.
+CMD sh -c "bun run build && bun run start"

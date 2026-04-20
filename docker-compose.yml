@@ -5,4 +5,10 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    volumes:
+      # Cache the Next.js build so restarts are fast after first run
+      - nextjs_build:/app/.next
     restart: unless-stopped
+
+volumes:
+  nextjs_build:
