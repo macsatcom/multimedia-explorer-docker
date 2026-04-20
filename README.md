@@ -14,6 +14,12 @@ Try the hosted version at [multimedia-explorer.openrouter.ai](https://multimedia
 
 You need an OpenRouter API key from [openrouter.ai/keys](https://openrouter.ai/keys).
 
+Create a `.env` file in the same directory as your `docker-compose.yml`:
+
+```env
+NEXT_PUBLIC_OPENROUTER_API_KEY=sk-or-v1-...
+```
+
 > **Note:** `NEXT_PUBLIC_OPENROUTER_API_KEY` is a Next.js build-time variable — it gets baked into the JavaScript bundle when the app compiles. To work around this, the container runs `next build` at startup, so any env vars you pass via `docker run -e` or `docker-compose` are available during the build. The first startup takes ~30–60 seconds while the app builds; subsequent restarts are fast thanks to the cached build volume.
 
 ## Usage
