@@ -1,0 +1,113 @@
+name: Build & Push Docker Image
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Check for upstream changes every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  UPSTREAM_REPO: OpenRouterTeam/multimedia-explorer
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      upstream_sha: ${{ steps.upstream.outputs.sha }}
+    steps:
+      - name: Get upstream latest commit SHA
+        id: upstream
+        run: |
+          SHA=$(curl -s "https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/commits/main" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            | jq -r '.sha')
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Get last built SHA
+        id: last_built
+        run: |
+          SHA=$(curl -s "https://api.github.com/repos/${{ github.repository }}/contents/last-built-sha.txt" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            | jq -r '.content // empty' | base64 -d | tr -d '\n' || echo "")
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Compare SHAs
+        id: compare
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] || \
+             [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
+             [ "${{ steps.upstream.outputs.sha }}" != "${{ steps.last_built.outputs.sha }}" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "No upstream changes detected, skipping build."
+          fi
+
+  build-and-push:
+    needs: check-upstream
+    if: needs.check-upstream.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.check-upstream.outputs.upstream_sha }},prefix=upstream-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save last built SHA
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = "${{ needs.check-upstream.outputs.upstream_sha }}";
+            const content = Buffer.from(sha).toString("base64");
+            let fileSha;
+            try {
+              const { data } = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: "last-built-sha.txt",
+              });
+              fileSha = data.sha;
+            } catch {}
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: "last-built-sha.txt",
+              message: `chore: track upstream SHA ${sha.slice(0, 7)}`,
+              content,
+              sha: fileSha,
+            });
