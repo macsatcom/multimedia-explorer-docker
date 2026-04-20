@@ -46,7 +46,7 @@ services:
 Start with:
 
 ```bash
-docker compose up -d
+docker compose pull && docker compose up -d
 ```
 
 ## Auto-updates
